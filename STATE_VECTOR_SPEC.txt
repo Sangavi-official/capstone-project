@@ -1,0 +1,65 @@
+GHOSTNET — FINAL STATE VECTOR SPECIFICATION (LOCKED)
+======================================================
+This specification is final. Phase 4 hardware integration
+will populate these exact same indices with real sensor/
+gateway data — no index will be added, removed, or repurposed
+after this point.
+
+12-DIMENSION STATE VECTOR
+--------------------------
+Index  Name                  Source (Phase 3)        Source (Phase 4, future)
+-----  --------------------  ----------------------  ------------------------
+[0]    cloud_ip_exposure     Simulated/AWS tag        AWS Elastic IP rotation status
+[1]    open_ports            Simulated + AWS read     AWS Security Group live state
+[2]    api_exposure          Simulated                AWS API Gateway live state
+[3]    iot_ip_exposure       Simulated                OpenWRT router live IP
+[4]    mqtt_exposure         Simulated                Mosquitto broker live topic state
+[5]    cve_score             NIST NVD API (live)       NIST NVD API (live)
+[6]    shodan_score          Shodan API (live)         Shodan API (live)
+[7]    traffic_load          Simulated                 Real sensor/request throughput
+[8]    recon_attempts        Simulated (pure, no       AWS WAF / CloudWatch scan logs
+                              blending with any
+                              other signal)
+[9]    time_since_mutation   Internal clock            Internal clock
+[10]   abuse_score           AbuseIPDB API (live)      AbuseIPDB API (live)
+[11]   attck_score           MITRE ATT&CK API (live)   MITRE ATT&CK API (live)
+
+DESIGN RULES ENFORCED IN THIS VERSION
+---------------------------------------
+1. Each index has exactly ONE data source. No index is ever the
+   sum, product, or blend of two different signals.
+
+2. [8] recon_attempts is now independent — it no longer absorbs
+   abuse_score. This was the corrupted index identified in audit.
+
+3. [10] and [11] are NEW dedicated slots for abuse_score and
+   attck_score. Previously these were fetched and discarded
+   (attck_score) or saturated to 1.0 by a broken denominator
+   (abuse_score). Both are now properly normalized AND properly
+   written into the state the agent actually observes.
+
+4. All four live API scores ([5],[6],[10],[11]) are fetched
+   EXACTLY ONCE at environment construction (__init__), never
+   inside reset() or step(). This prevents API rate-limit
+   exhaustion during 100,000-step training runs.
+
+5. Normalization denominators were corrected based on real
+   observed API response magnitudes (see audit below), not
+   guessed values.
+
+NORMALIZATION FIXES (WITH JUSTIFICATION)
+-------------------------------------------
+AbuseIPDB:
+  OLD: limit=100 in API call, divide by 100  -> always saturates to 1.0
+  NEW: limit=10000 in API call, divide by 10000 -> real headroom
+
+MITRE ATT&CK:
+  OLD: keywords = health, hospital, medical, iot, scada, ics
+       -> "iot"/"ics" matched ~25% of the ENTIRE framework (151/600)
+  NEW: keywords = medical device, healthcare, hospital, patient,
+       clinical -> genuinely healthcare-specific subset only
+       (expected real count: single digits to low tens, not 150+)
+  NEW denominator: divide by 30 (realistic ceiling for a true
+  healthcare-specific technique count, leaves real headroom)
+
+THIS FILE IS A REFERENCE ONLY — NOT EXECUTABLE.

@@ -1,54 +1,46 @@
 """
-GhostNet Training Script — Phase 1 + Phase 2
+GhostNet Training Script — Final, Corrected
 ==============================================
-Trains the PPO agent on the GhostNet environment.
-Run this after ghostnet_env.py and threat_feeds.py are ready.
+Trains the PPO agent on the corrected 12-dimension state vector.
 
 Usage:
-    python train.py           # trains with live CVE data (Phase 2)
-    python train.py --sim     # trains with simulated data only (Phase 1)
+    python train.py          trains with live threat feeds
+    python train.py --sim    trains with simulated data only
 """
 
 import os
-import sys
 import argparse
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
+from ghostnet_env_v2 import GhostNetEnvV2
 
-# Parse argument
 parser = argparse.ArgumentParser()
 parser.add_argument("--sim", action="store_true",
-                    help="Use simulated data only (no live CVE calls)")
+                    help="Train with simulated threat data only")
 args = parser.parse_args()
 
 use_live = not args.sim
 
-# Import correct environment
-if use_live:
-    from ghostnet_env_v2 import GhostNetEnvV2 as EnvClass
-    version = "v2 (LTSA — live CVE data)"
-else:
-    from ghostnet_env import GhostNetEnv as EnvClass
-    version = "v1 (simulated data)"
-
 print("=" * 55)
 print("  GhostNet — Hospital Network Moving Target Defense")
+print("  Training Run (Final, Corrected State Vector)")
 print("=" * 55)
-print(f"  Environment : {version}")
-print(f"  Algorithm   : PPO (Proximal Policy Optimization)")
-print(f"  Steps       : 100,000")
-print("=" * 55)
+print(f"  State dimensions : 12")
+print(f"  Live threat feeds: {'ENABLED' if use_live else 'DISABLED'}")
+print(f"  Algorithm        : PPO")
+print(f"  Total steps      : 100,000")
+print("=" * 55 + "\n")
 
-# Create folders
 os.makedirs("logs",       exist_ok=True)
 os.makedirs("best_model", exist_ok=True)
 
-# Create environments
-env      = Monitor(EnvClass(use_live_feeds=use_live) if use_live else EnvClass(), "logs/")
-eval_env = Monitor(EnvClass(use_live_feeds=False)    if use_live else EnvClass())
+train_env = GhostNetEnvV2(use_live_feeds=use_live)
+eval_env  = GhostNetEnvV2(use_live_feeds=False)
 
-# Evaluation callback
+env      = Monitor(train_env, "logs/")
+eval_env = Monitor(eval_env)
+
 eval_cb = EvalCallback(
     eval_env,
     best_model_save_path="./best_model/",
@@ -58,7 +50,6 @@ eval_cb = EvalCallback(
     verbose=1
 )
 
-# PPO agent
 model = PPO(
     "MlpPolicy", env,
     verbose=1,
@@ -69,13 +60,12 @@ model = PPO(
     ent_coef=0.01
 )
 
-print("\n  Training started. Watch ep_rew_mean increase.\n")
-
+print("  Training started.\n")
 model.learn(total_timesteps=100_000, callback=eval_cb)
-model.save("ghostnet_v2" if use_live else "ghostnet_v1")
+model.save("ghostnet_final")
 
 print("\n" + "=" * 55)
-print(f"  Training complete.")
-print(f"  Saved : ghostnet_{'v2' if use_live else 'v1'}.zip")
-print(f"  Best  : best_model/best_model.zip")
+print("  Training complete.")
+print("  Saved : ghostnet_final.zip")
+print("  Best  : best_model/best_model.zip")
 print("=" * 55)
